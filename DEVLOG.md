@@ -2,7 +2,8 @@
 
 > **개발 기간**: 2026년 6월  
 > **개발자**: seungwoohan12  
-> **레포지토리**: https://github.com/seungwoohan12/torystory
+> **레포지토리**: https://github.com/seungwoohan12/torystory  
+> **라이브**: https://seungwoohan12.github.io/torystory/
 
 ---
 
@@ -20,12 +21,14 @@
 | 프론트엔드 | React 19, TypeScript 5.8, Vite 6.2 |
 | 스타일링 | TailwindCSS v4 (`@tailwindcss/vite` 플러그인) |
 | 백엔드 | Node.js, Express 4 |
-| AI 모델 | Google Gemini (`@google/genai` v2.4 — `gemini-2.5-flash`) |
+| AI 모델 (서버) | Google Gemini (`@google/genai` v2.4 — `gemini-2.5-flash`) |
+| AI 모델 (클라이언트) | OpenAI GPT-4o + DALL-E 3 (storyPipeline 서비스) |
 | TTS | Web Speech API (`SpeechSynthesisUtterance`) |
 | 환경 변수 | dotenv |
 | 빌드 | Vite (프론트엔드) + esbuild (서버 번들) |
 | 패키지 매니저 | npm |
 | 버전 관리 | Git / GitHub |
+| CI/CD | GitHub Actions → GitHub Pages 자동 배포 |
 
 ---
 
@@ -39,6 +42,8 @@ torystory/
 │   ├── types.ts                  # TypeScript 인터페이스 정의
 │   ├── data.ts                   # 클래식 동화 데이터 (4편 내장)
 │   ├── index.css                 # 전역 스타일
+│   ├── services/
+│   │   └── storyPipeline.ts      # OpenAI 기반 동화 생성 파이프라인
 │   └── components/
 │       ├── LandingPage.tsx       # 첫 화면 (로그인/시작)
 │       ├── Header.tsx            # 상단 헤더
@@ -55,7 +60,11 @@ torystory/
 ├── vite.config.ts                # Vite 설정
 ├── tsconfig.json                 # TypeScript 설정
 ├── package.json
-└── .gitignore
+├── .gitignore
+├── .github/
+│   └── workflows/
+│       └── deploy.yml            # GitHub Actions 자동 배포
+└── DEVLOG.md                     # 개발일지 (현재 문서)
 ```
 
 ---
@@ -104,6 +113,25 @@ torystory/
 ### 8. 구독 모델 (Paywall)
 - 무료(Free): 클래식 동화 + AI 동화 1편
 - 프리미엄(Premium): 무제한 AI 동화 생성, 다중 프로필, 전 기능 개방
+
+### 9. storyPipeline 서비스 (`src/services/storyPipeline.ts`)
+OpenAI API를 활용한 고품질 동화 생성 6단계 파이프라인.  
+기존 Gemini 기반 서버 생성과 별개로, 클라이언트에서 직접 호출 가능한 독립 서비스.
+
+| 단계 | 내용 | 모델 |
+|------|------|------|
+| 1 | 세계관 설정 (배경·분위기·갈등 구성) | GPT-4o |
+| 2 | 5장면 BookScene JSON 생성 (한국어 본문 + 영문 시각 프롬프트) | GPT-4o |
+| 3 | 영어·일본어·중국어·스페인어 번역 | GPT-4o |
+| 4 | artStyle → DALL-E 프롬프트 변환 + 캐릭터 시트 prefix 삽입 | — |
+| 5 | 장면별 일러스트 순차 생성 (병렬 금지) | DALL-E 3 |
+| 6 | 독후 활동 전체 생성 (독해·감정·이어쓰기·어휘) | GPT-4o |
+
+**artStyle 매핑:**
+- 물감 수채화 → `watercolor illustration, soft brush strokes, pastel tones`
+- 파스텔 크레용 → `pastel crayon illustration, chalk texture, gentle colors`
+- 동화풍 일러스트 → `digital cartoon illustration, bright vivid colors, clean lines`
+- 클래식 잉크 → `ink and watercolor, classic storybook style, detailed linework`
 
 ---
 
@@ -157,17 +185,23 @@ interface ReadingHistory {
 ```
 브라우저 (React SPA)
     │
-    │  HTTP (개발: Vite HMR 프록시 / 프로덕션: Express 정적 서빙)
-    ▼
-Express 서버 (server.ts)
+    ├─ HTTP (개발: Vite HMR / 프로덕션: Express 정적 서빙)
+    │       ▼
+    │   Express 서버 (server.ts)
+    │       ├── /api/generate-story  →  Google Gemini 2.5 Flash
+    │       ├── /api/generate-image  →  Gemini Image (폴백: SVG)
+    │       └── /*                  →  dist/index.html
     │
-    ├── /api/generate-story  →  Google Gemini 2.5 Flash
-    ├── /api/generate-image  →  Gemini Image (폴백: SVG 생성기)
-    └── /* (SPA 라우팅)     →  dist/index.html
+    └─ 직접 호출 (VITE_OPENAI_API_KEY)
+            ▼
+        storyPipeline.ts
+            ├── GPT-4o  (세계관·장면·번역·활동)
+            └── DALL-E 3 (장면 일러스트, 순차)
 ```
 
 **개발 모드**: `tsx server.ts` → Express + Vite 미들웨어 통합 (HMR 지원)  
-**프로덕션**: `vite build` + `esbuild server.ts` → `node dist/server.cjs`
+**프로덕션 (로컬)**: `vite build` + `esbuild server.ts` → `node dist/server.cjs`  
+**GitHub Pages**: GitHub Actions → `vite build --base /torystory/` → Pages 자동 배포
 
 ---
 
@@ -183,6 +217,7 @@ Express 서버 (server.ts)
 | `server.ts` | `response.text`가 `undefined`일 수 있음 | null 병합 연산자(`??`) 적용 |
 | 다수 컴포넌트 | `lucide-react` 미사용 임포트 | 정리 |
 | `package.json` | `@types/react`, `@types/react-dom` 미설치 | React 19용 타입 패키지 설치 |
+| `src/services/storyPipeline.ts` | `import.meta.env` 타입 미인식 | `/// <reference types="vite/client" />` 추가 |
 
 ---
 
@@ -194,7 +229,9 @@ npm install
 
 # 2. 환경 변수 설정
 cp .env.example .env
-# .env 파일에 GEMINI_API_KEY 입력
+# .env 파일에 아래 키 입력:
+#   GEMINI_API_KEY=...       (서버 사이드 Gemini API)
+#   VITE_OPENAI_API_KEY=...  (클라이언트 storyPipeline)
 
 # 3. 개발 서버 실행 (HMR 지원)
 npm run dev
@@ -205,6 +242,21 @@ npm run build
 npm start
 # → http://localhost:3000
 ```
+
+## 🌐 GitHub Pages 배포
+
+`main` 브랜치에 푸쉬하면 GitHub Actions가 자동으로 빌드·배포합니다.
+
+```
+main 푸쉬
+  └→ .github/workflows/deploy.yml 실행
+       └→ npm ci → vite build --base /torystory/
+            └→ GitHub Pages 업로드
+                 └→ https://seungwoohan12.github.io/torystory/
+```
+
+> GitHub Pages는 정적 서빙만 지원하므로 Express 백엔드 API는 동작하지 않습니다.  
+> AI 기능은 `VITE_OPENAI_API_KEY`가 설정된 환경에서 storyPipeline 서비스로 동작합니다.
 
 ---
 
@@ -235,6 +287,19 @@ npm start
   }
 }
 ```
+
+---
+
+## 📋 커밋 히스토리
+
+| 커밋 | 내용 |
+|------|------|
+| `30e0f85` | Initial commit (GitHub 레포 생성) |
+| `0731f16` | feat: 토리동화 React 앱 전체 소스 업로드 |
+| `3b12a1b` | docs: DEVLOG.md 최초 작성 |
+| `04e710b` | docs: README.md 상세 내용 업데이트 |
+| `2d9436b` | ci: GitHub Actions 자동 배포 워크플로우 추가 |
+| `a649186` | feat: storyPipeline 서비스 추가 (OpenAI GPT-4o + DALL-E 3) |
 
 ---
 
