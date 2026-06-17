@@ -21,8 +21,9 @@
 | 프론트엔드 | React 19, TypeScript 5.8, Vite 6.2 |
 | 스타일링 | TailwindCSS v4 (`@tailwindcss/vite` 플러그인) |
 | 백엔드 | Node.js, Express 4 |
-| AI 모델 (서버) | Google Gemini (`@google/genai` v2.4 — `gemini-2.5-flash`) |
-| AI 모델 (클라이언트) | OpenAI GPT-4o + DALL-E 3 (storyPipeline 서비스) |
+| AI 텍스트 | Upstage Solar Pro (`solar-pro`) — storyPipeline 서비스 |
+| AI 이미지 | SVG 절차적 생성 (`/api/generate-image` 폴백) |
+| AI 폴백 (서버) | Google Gemini (`@google/genai` v2.4 — `gemini-2.5-flash`) |
 | TTS | Web Speech API (`SpeechSynthesisUtterance`) |
 | 환경 변수 | dotenv |
 | 빌드 | Vite (프론트엔드) + esbuild (서버 번들) |
@@ -115,17 +116,17 @@ torystory/
 - 프리미엄(Premium): 무제한 AI 동화 생성, 다중 프로필, 전 기능 개방
 
 ### 9. storyPipeline 서비스 (`src/services/storyPipeline.ts`)
-OpenAI API를 활용한 고품질 동화 생성 6단계 파이프라인.  
-기존 Gemini 기반 서버 생성과 별개로, 클라이언트에서 직접 호출 가능한 독립 서비스.
+Solar Pro + SVG 기반 동화 생성 6단계 파이프라인.  
+텍스트는 Upstage Solar Pro, 이미지는 서버 SVG 생성기를 사용합니다.
 
 | 단계 | 내용 | 모델 |
 |------|------|------|
-| 1 | 세계관 설정 (배경·분위기·갈등 구성) | GPT-4o |
-| 2 | 5장면 BookScene JSON 생성 (한국어 본문 + 영문 시각 프롬프트) | GPT-4o |
-| 3 | 영어·일본어·중국어·스페인어 번역 | GPT-4o |
-| 4 | artStyle → DALL-E 프롬프트 변환 + 캐릭터 시트 prefix 삽입 | — |
-| 5 | 장면별 일러스트 순차 생성 (병렬 금지) | DALL-E 3 |
-| 6 | 독후 활동 전체 생성 (독해·감정·이어쓰기·어휘) | GPT-4o |
+| 1 | 세계관 설정 (배경·분위기·갈등 구성) | Solar Pro |
+| 2 | 5장면 BookScene JSON 생성 (한국어 본문 + 영문 시각 프롬프트) | Solar Pro |
+| 3 | 영어·일본어·중국어·스페인어 번역 | Solar Pro |
+| 4 | artStyle → 삽화 프롬프트 변환 + 캐릭터 prefix 삽입 | — |
+| 5 | 장면별 SVG 일러스트 순차 생성 | `/api/generate-image` |
+| 6 | 독후 활동 전체 생성 (독해·감정·이어쓰기·어휘) | Solar Pro |
 
 **artStyle 매핑:**
 - 물감 수채화 → `watercolor illustration, soft brush strokes, pastel tones`
@@ -137,17 +138,21 @@ OpenAI API를 활용한 고품질 동화 생성 6단계 파이프라인.
 
 ## 🔌 API 엔드포인트
 
-### `POST /api/generate-story`
-- **역할**: Gemini AI로 맞춤 동화 전체 생성
-- **입력**: `{ protagonist, age, theme, style, language, numScenes, extraKorean }`
-- **출력**: `FairyTale` 객체 (제목 5개 언어, 장면 배열, 독후 활동 전체)
-- **폴백**: Gemini 실패 시 내장 fallback 스토리 반환
+### `POST /api/solar/chat`
+- **역할**: Upstage Solar Pro 텍스트 생성 프록시 (CORS 우회)
+- **입력**: OpenAI 호환 chat completions 형식
+- **출력**: Solar Pro 응답 그대로 전달
+- **키**: `SOLAR_API_KEY`
 
 ### `POST /api/generate-image`
-- **역할**: 동화 장면별 AI 일러스트 생성
+- **역할**: 동화 장면별 SVG 일러스트 생성
 - **입력**: `{ prompt, pageNum, style }`
-- **출력**: `{ imageUrl: "data:image/png;base64,..." }`
-- **폴백**: API 실패 시 아름다운 SVG 일러스트 자동 생성
+- **출력**: `{ imageUrl: "data:image/svg+xml;base64,..." }`
+- **동작**: 페이지 번호 기반 색상 팔레트로 귀여운 캐릭터 SVG 생성
+
+### `POST /api/generate-story` (레거시)
+- **역할**: Gemini AI로 맞춤 동화 전체 생성 (현재 미사용)
+- **폴백**: Gemini 실패 시 내장 fallback 스토리 반환
 
 ---
 
@@ -185,18 +190,16 @@ interface ReadingHistory {
 ```
 브라우저 (React SPA)
     │
-    ├─ HTTP (개발: Vite HMR / 프로덕션: Express 정적 서빙)
-    │       ▼
-    │   Express 서버 (server.ts)
-    │       ├── /api/generate-story  →  Google Gemini 2.5 Flash
-    │       ├── /api/generate-image  →  Gemini Image (폴백: SVG)
-    │       └── /*                  →  dist/index.html
-    │
-    └─ 직접 호출 (VITE_OPENAI_API_KEY)
+    └─ HTTP (개발: Vite HMR / 프로덕션: Express 정적 서빙)
             ▼
-        storyPipeline.ts
-            ├── GPT-4o  (세계관·장면·번역·활동)
-            └── DALL-E 3 (장면 일러스트, 순차)
+        Express 서버 (server.ts)
+            ├── /api/solar/chat      →  Upstage Solar Pro (SOLAR_API_KEY)
+            ├── /api/generate-image  →  SVG 절차적 생성 (폴백)
+            ├── /api/generate-story  →  Google Gemini 2.5 Flash (레거시)
+            ├── /api/openai/images   →  OpenAI 이미지 (미사용)
+            └── /*                  →  dist/index.html
+                    ▲
+            storyPipeline.ts 가 /api/solar/chat, /api/generate-image 호출
 ```
 
 **개발 모드**: `tsx server.ts` → Express + Vite 미들웨어 통합 (HMR 지원)  
@@ -326,7 +329,31 @@ const storyData = await generateStory(underConstructionConfig, (step, label) => 
 | `fdec971` | docs: DEVLOG storyPipeline·CI/CD·아키텍처 업데이트 |
 | `8fbc8b2` | chore: .env.example VITE_OPENAI_API_KEY 플레이스홀더 추가 |
 | `6ea6cfb` | refactor: App.tsx Gemini 호출 → storyPipeline으로 교체 |
+| `2ab33c2` | feat: Solar(텍스트) + SVG(이미지) 파이프라인으로 전환 |
 
 ---
 
-*마지막 업데이트: 2026년 6월 17일*
+## 🔄 리팩토링 — Solar + SVG 전환 (2026-06-18)
+
+### 배경
+- OpenAI GPT-4o 키 노출로 인한 자동 취소 반복 문제
+- OpenAI 계정 조직 인증 미완료로 이미지 생성 API 사용 불가 (`chatgpt-image-latest`, `gpt-image-1` 모두 차단)
+- 안정적인 대체 텍스트 모델로 Upstage Solar Pro 채택
+
+### 변경 내용
+
+| 항목 | 변경 전 | 변경 후 |
+|------|---------|---------|
+| 텍스트 생성 | OpenAI GPT-4o | Upstage Solar Pro |
+| 이미지 생성 | DALL-E 3 / gpt-image-1 | 서버 SVG 절차적 생성 |
+| 서버 프록시 | `/api/openai/chat` | `/api/solar/chat` |
+| 환경변수 | `OPENAI_API_KEY` | `SOLAR_API_KEY` + `OPENAI_API_KEY` |
+
+### 기타 수정
+- **무료회원 1권 제한 해제**: 개발 편의를 위해 세션당 생성 횟수 제한 제거
+- **진행 화면 흐름 수정**: `setIsCakingProgress(false)`를 API 완료 후로 이동 → 진행 화면이 실제 생성 완료까지 유지됨
+- **StoryProgress 펄스 애니메이션**: 가짜 애니메이션(5초) 완료 후 실제 API 대기 중 80~100% 구간 펄스 표시
+
+---
+
+*마지막 업데이트: 2026년 6월 18일*
