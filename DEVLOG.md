@@ -290,6 +290,29 @@ main 푸쉬
 
 ---
 
+## 🔄 주요 리팩토링
+
+### App.tsx — handleProgressLoaderComplete 교체 (2026-06-17)
+
+**기존**: Express 서버 2회 호출 방식
+```
+/api/generate-story  →  Gemini 2.5 Flash (스토리 텍스트)
+/api/generate-image  →  Gemini Image / SVG 폴백 (장면별 병렬 호출)
+```
+
+**변경 후**: OpenAI storyPipeline 단일 호출
+```typescript
+const storyData = await generateStory(underConstructionConfig, (step, label) => {
+  console.log(`[${step}/6] ${label}`);
+});
+```
+
+- 54줄 → 15줄로 축소
+- 서버 의존성 제거 (GitHub Pages에서도 AI 기능 동작 가능)
+- 이미지 생성이 DALL-E 3 순차 생성으로 일관성 확보
+
+---
+
 ## 📋 커밋 히스토리
 
 | 커밋 | 내용 |
@@ -300,6 +323,9 @@ main 푸쉬
 | `04e710b` | docs: README.md 상세 내용 업데이트 |
 | `2d9436b` | ci: GitHub Actions 자동 배포 워크플로우 추가 |
 | `a649186` | feat: storyPipeline 서비스 추가 (OpenAI GPT-4o + DALL-E 3) |
+| `fdec971` | docs: DEVLOG storyPipeline·CI/CD·아키텍처 업데이트 |
+| `8fbc8b2` | chore: .env.example VITE_OPENAI_API_KEY 플레이스홀더 추가 |
+| `6ea6cfb` | refactor: App.tsx Gemini 호출 → storyPipeline으로 교체 |
 
 ---
 
