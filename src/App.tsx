@@ -262,19 +262,15 @@ export default function App() {
     style: string;
     extraKorean: boolean;
   }) => {
-    // 1. Check quote limits for Free tiers
-    if (session.subscriptionType === "free" && customStoryCount >= 1) {
-      triggerQuotaReachedAlert();
-      return;
-    }
-
     setUnderConstructionConfig(config);
     setIsCakingProgress(true); // Enter SCREEN 3 Progress Loader
   };
 
   const handleProgressLoaderComplete = async () => {
-    setIsCakingProgress(false);
-    if (!underConstructionConfig) return;
+    if (!underConstructionConfig) {
+      setIsCakingProgress(false);
+      return;
+    }
 
     try {
       const storyData = await generateStory(
@@ -286,9 +282,11 @@ export default function App() {
       setTales([storyData, ...tales]);
       setCustomStoryCount((prev) => prev + 1);
       setActiveReadingTale(storyData);
+      setIsCakingProgress(false);
       setActiveTab("reader");
     } catch (err: any) {
       console.error(err);
+      setIsCakingProgress(false);
       alert("동화책 생성 중 오류가 발생했어요: " + err.message);
     }
   };

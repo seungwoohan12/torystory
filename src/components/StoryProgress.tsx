@@ -55,31 +55,27 @@ const STEPS = [
 export const StoryProgress: React.FC<StoryProgressProps> = ({ onComplete }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [percent, setPercent] = useState(0);
+  const [isWaiting, setIsWaiting] = useState(false);
+  const [pulseDir, setPulseDir] = useState<1 | -1>(1);
 
   useEffect(() => {
-    // Elegant progressing simulator that takes around 5 seconds total.
     const stepInterval = setInterval(() => {
       setCurrentStep((prev) => {
-        if (prev < STEPS.length) {
-          return prev + 1;
-        } else {
-          clearInterval(stepInterval);
-          return prev;
-        }
+        if (prev < STEPS.length) return prev + 1;
+        clearInterval(stepInterval);
+        return prev;
       });
     }, 900);
 
     const percentInterval = setInterval(() => {
       setPercent((prev) => {
-        if (prev < 100) {
-          return prev + 1;
-        } else {
-          clearInterval(percentInterval);
-          setTimeout(() => {
-            onComplete();
-          }, 400);
-          return prev;
-        }
+        if (prev < 100) return prev + 1;
+        clearInterval(percentInterval);
+        setTimeout(() => {
+          setIsWaiting(true);
+          onComplete();
+        }, 400);
+        return prev;
       });
     }, 45);
 
@@ -88,6 +84,19 @@ export const StoryProgress: React.FC<StoryProgressProps> = ({ onComplete }) => {
       clearInterval(percentInterval);
     };
   }, [onComplete]);
+
+  // 대기 중 진행바 펄스 애니메이션
+  useEffect(() => {
+    if (!isWaiting) return;
+    const pulse = setInterval(() => {
+      setPercent((prev) => {
+        if (prev >= 100) { setPulseDir(-1); return prev - 1; }
+        if (prev <= 80)  { setPulseDir(1);  return prev + 1; }
+        return prev + pulseDir;
+      });
+    }, 40);
+    return () => clearInterval(pulse);
+  }, [isWaiting, pulseDir]);
 
   return (
     <div
@@ -114,10 +123,10 @@ export const StoryProgress: React.FC<StoryProgressProps> = ({ onComplete }) => {
 
       <div className="space-y-2">
         <h2 className="text-2xl font-black text-slate-800 tracking-tight">
-          토리가 마법 동화를 열심히 굽고 있어요! 🧁
+          {isWaiting ? "AI가 동화를 완성하고 있어요! ✨" : "토리가 마법 동화를 열심히 굽고 있어요! 🧁"}
         </h2>
         <p className="text-xs text-slate-400 font-medium">
-          6단계 AI 파이프라인 가동 중 • {percent}% 완성
+          {isWaiting ? "Solar AI · 삽화 생성 중 · 잠시만 기다려 주세요" : `6단계 AI 파이프라인 가동 중 • ${percent}% 완성`}
         </p>
       </div>
 

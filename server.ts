@@ -467,6 +467,44 @@ app.post("/api/generate-story", async (req, res) => {
 });
 
 // -------------------------------------------------------------
+// SOLAR PROXY — Upstage Solar (text generation)
+// -------------------------------------------------------------
+app.post("/api/solar/chat", async (req, res) => {
+  try {
+    const apiKey = process.env.SOLAR_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: "SOLAR_API_KEY not set" });
+    const upstream = await fetch("https://api.upstage.ai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(req.body),
+    });
+    const data = await upstream.json();
+    res.status(upstream.status).json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// -------------------------------------------------------------
+// OPENAI PROXY — DALL-E 3 (image generation)
+// -------------------------------------------------------------
+app.post("/api/openai/images", async (req, res) => {
+  try {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: "OPENAI_API_KEY not set" });
+    const upstream = await fetch("https://api.openai.com/v1/images/generations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(req.body),
+    });
+    const data = await upstream.json();
+    res.status(upstream.status).json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// -------------------------------------------------------------
 // DALL-E STYLE ILLUSTRATION proxy via gemini-2.5-flash-image
 // -------------------------------------------------------------
 app.post("/api/generate-image", async (req, res) => {

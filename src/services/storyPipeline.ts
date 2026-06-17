@@ -4,10 +4,14 @@ import { FairyTale, BookScene } from "../types";
 // ── artStyle → DALL-E prefix 매핑 ────────────────────────────────────────────
 
 const ART_STYLE_PREFIX: Record<string, string> = {
-  "수채화": "watercolor illustration, soft brush strokes, pastel tones, children's book",
-  "파스텔 크레용": "pastel crayon illustration, chalk texture, gentle colors, children's book",
-  "동화풍 일러스트": "digital cartoon illustration, bright vivid colors, clean lines",
-  "잉크 스케치": "ink and watercolor, classic storybook style, detailed linework",
+  수채화:
+    "watercolor illustration, soft brush strokes, pastel tones, children's book",
+  "파스텔 크레용":
+    "pastel crayon illustration, chalk texture, gentle colors, children's book",
+  "동화풍 일러스트":
+    "digital cartoon illustration, bright vivid colors, clean lines",
+  "잉크 스케치":
+    "ink and watercolor, classic storybook style, detailed linework",
 };
 
 const DEFAULT_STYLE_PREFIX = "children's book illustration, soft colors";
@@ -22,20 +26,16 @@ function buildCharacterPrefix(artStylePrefix: string): string {
 
 // ── OpenAI 헬퍼 ──────────────────────────────────────────────────────────────
 
-async function callGPT(
+async function callSolar(
   system: string,
   user: string,
   jsonMode: boolean,
 ): Promise<string | object> {
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+  const res = await fetch("/api/solar/chat", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "gpt-4o",
+      model: "solar-pro",
       max_tokens: 2000,
       messages: [
         { role: "system", content: system },
@@ -44,31 +44,21 @@ async function callGPT(
       ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
     }),
   });
-  if (!res.ok) throw new Error(`GPT-4o error: ${res.status}`);
+  if (!res.ok) throw new Error(`Solar error: ${res.status}`);
   const data = await res.json();
   const content = data.choices[0].message.content as string;
   return jsonMode ? JSON.parse(content) : content;
 }
 
-async function callDALLE(prompt: string): Promise<string> {
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-  const res = await fetch("https://api.openai.com/v1/images/generations", {
+async function callImage(prompt: string, pageNum: number, style: string): Promise<string> {
+  const res = await fetch("/api/generate-image", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: "dall-e-3",
-      prompt: prompt.slice(0, 4000),
-      size: "1024x1024",
-      quality: "standard",
-      n: 1,
-    }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt: prompt.slice(0, 2000), pageNum, style }),
   });
-  if (!res.ok) throw new Error(`DALL-E 3 error: ${res.status}`);
+  if (!res.ok) throw new Error(`이미지 오류 ${res.status}`);
   const data = await res.json();
-  return data.data[0].url as string;
+  return data.imageUrl as string;
 }
 
 // ── 메인 파이프라인 ───────────────────────────────────────────────────────────
@@ -90,7 +80,7 @@ export async function generateStory(
   // ── 1단계: 소재 분석 및 아이 성향 매핑 ────────────────────────────────────
   onProgress(1, "소재 분석 및 아이 성향 매핑");
 
-  const worldSetting = (await callGPT(
+  const worldSetting = (await callSolar(
     "한국 영유아 동화 전문 작가입니다",
     `주인공: ${protagonist}, 나이: ${age}세, 테마: ${theme}, 화풍: ${style}\n` +
       `이 동화의 세계관을 한국어로 3문장으로 설정해 주세요.`,
@@ -100,7 +90,7 @@ export async function generateStory(
   // ── 2단계: 기승전결 및 따스한 국문 운문 ────────────────────────────────────
   onProgress(2, "기승전결 및 따스한 국문 운문");
 
-  const storyData = (await callGPT(
+  const storyData = (await callSolar(
     "한국 영유아 동화 전문 작가입니다. 반드시 유효한 JSON만 반환하세요.",
     `세계관:\n${worldSetting}\n\n` +
       `주인공: ${protagonist}(${age}세), 테마: ${theme}\n\n` +
@@ -141,7 +131,7 @@ export async function generateStory(
   // ── 3단계: 씬 분할 및 5대 글로벌 다국어 고운 번역 ─────────────────────────
   onProgress(3, "씬 분할 및 5대 글로벌 다국어 고운 번역");
 
-  const translationData = (await callGPT(
+  const translationData = (await callSolar(
     "You are a professional literary translator. Return only valid JSON.",
     `Translate the following Korean fairy tale title and scene narratives into ` +
       `English, Japanese, Simplified Chinese, and Spanish.\n\n` +
@@ -186,14 +176,14 @@ export async function generateStory(
   // ── 5단계: 영유아 전용 동화책 삽화 렌더링 진행 ────────────────────────────
   for (let i = 0; i < scenes.length; i++) {
     onProgress(5, "영유아 전용 동화책 삽화 렌더링 진행");
-    const imageUrl = await callDALLE(scenes[i].visualPrompt);
+    const imageUrl = await callImage(scenes[i].visualPrompt, scenes[i].pageNum, style);
     scenes[i] = { ...scenes[i], imageUrl };
   }
 
   // ── 6단계: 이해·감정·창의·어휘 4종 교육 놀이마당 설계 ─────────────────────
   onProgress(6, "이해·감정·창의·어휘 4종 교육 놀이마당 설계");
 
-  const activities = (await callGPT(
+  const activities = (await callSolar(
     "당신은 아동 교육 전문가입니다. 반드시 유효한 JSON만 반환하세요.",
     `동화 제목: ${storyData.titleKo}\n` +
       `주인공: ${protagonist}(${age}세)\n` +
