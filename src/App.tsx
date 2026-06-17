@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { generateStory } from "./services/storyPipeline";
 import { Sidebar } from "./components/Sidebar";
 import { LandingPage } from "./components/LandingPage";
 import { Header } from "./components/Header";
@@ -271,67 +272,24 @@ export default function App() {
     setIsCakingProgress(true); // Enter SCREEN 3 Progress Loader
   };
 
-  // Callback once the Animated 6-step progress loader completes (around 5s)
   const handleProgressLoaderComplete = async () => {
     setIsCakingProgress(false);
-
     if (!underConstructionConfig) return;
 
-    // Trigger exact REST Call to Express endpoint `/api/generate-story`
     try {
-      const response = await fetch("/api/generate-story", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          protagonist: underConstructionConfig.protagonist,
-          age: underConstructionConfig.age,
-          theme: underConstructionConfig.theme,
-          style: underConstructionConfig.style,
-          extraKorean: underConstructionConfig.extraKorean,
-        }),
-      });
-
-      const storyData: FairyTale = await response.json();
-
-      // Inject lazy secondary illustration generation if we need custom page imageUrl base64,
-      // inside a lazy background sequence or use it directly
-      const detailedScenes = await Promise.all(
-        storyData.scenes.map(async (sc) => {
-          try {
-            // Call image proxy route
-            const imgRes = await fetch("/api/generate-image", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                prompt: sc.visualPrompt,
-                pageNum: sc.pageNum,
-                style: storyData.style,
-              }),
-            });
-            const imgData = await imgRes.json();
-            return {
-              ...sc,
-              imageUrl: imgData.imageUrl,
-            };
-          } catch (e) {
-            console.warn("Scene rendering failed, falling back to static:", e);
-            return sc;
-          }
-        }),
+      const storyData = await generateStory(
+        underConstructionConfig,
+        (step, label) => {
+          console.log(`[${step}/6] ${label}`);
+        },
       );
-
-      storyData.scenes = detailedScenes;
-
-      // Add to dynamic collection state
       setTales([storyData, ...tales]);
       setCustomStoryCount((prev) => prev + 1);
-
-      // Instantly launch Cozy Reader with newly created book
       setActiveReadingTale(storyData);
       setActiveTab("reader");
-    } catch (err) {
-      console.error("Story compilation completely failed offline:", err);
-      alert("동화책 인코딩 중 오류가 생겼습니다. 안전 복구가 작동되었습니다.");
+    } catch (err: any) {
+      console.error(err);
+      alert("동화책 생성 중 오류가 발생했어요: " + err.message);
     }
   };
 

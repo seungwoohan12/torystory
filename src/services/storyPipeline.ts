@@ -1,32 +1,32 @@
 /// <reference types="vite/client" />
 import { FairyTale, BookScene } from "../types";
 
-export interface StoryInputs {
-  heroName: string;
-  age: number;
-  emotion: string;
-  backgrounds: string[];
-  koreanMotifs: string[];
-  artStyle: string;
-}
+// ── artStyle → DALL-E prefix 매핑 ────────────────────────────────────────────
 
-const ART_STYLE_MAP: Record<string, string> = {
-  "물감 수채화": "watercolor illustration, soft brush strokes, pastel tones",
-  "파스텔 크레용": "pastel crayon illustration, chalk texture, gentle colors",
+const ART_STYLE_PREFIX: Record<string, string> = {
+  "수채화": "watercolor illustration, soft brush strokes, pastel tones, children's book",
+  "파스텔 크레용": "pastel crayon illustration, chalk texture, gentle colors, children's book",
   "동화풍 일러스트": "digital cartoon illustration, bright vivid colors, clean lines",
-  "클래식 잉크": "ink and watercolor, classic storybook style, detailed linework",
+  "잉크 스케치": "ink and watercolor, classic storybook style, detailed linework",
 };
 
-const CHARACTER_SUFFIX =
-  "consistent character design, same protagonist in every scene, " +
-  "Korean children's book illustration, no text in image";
+const DEFAULT_STYLE_PREFIX = "children's book illustration, soft colors";
 
-// ── OpenAI helpers ────────────────────────────────────────────────────────────
+function buildCharacterPrefix(artStylePrefix: string): string {
+  return (
+    `${artStylePrefix}, Korean children's book, consistent character design, ` +
+    `same protagonist in every single scene, no text in image, no letters, ` +
+    `no words, safe for children, wholesome`
+  );
+}
 
-async function gpt4o(
-  messages: { role: string; content: string }[],
-  jsonMode = false,
-): Promise<string> {
+// ── OpenAI 헬퍼 ──────────────────────────────────────────────────────────────
+
+async function callGPT(
+  system: string,
+  user: string,
+  jsonMode: boolean,
+): Promise<string | object> {
   const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -36,16 +36,21 @@ async function gpt4o(
     },
     body: JSON.stringify({
       model: "gpt-4o",
-      messages,
+      max_tokens: 2000,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
       ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
     }),
   });
-  if (!res.ok) throw new Error(`GPT-4o API error: ${res.status}`);
+  if (!res.ok) throw new Error(`GPT-4o error: ${res.status}`);
   const data = await res.json();
-  return data.choices[0].message.content as string;
+  const content = data.choices[0].message.content as string;
+  return jsonMode ? JSON.parse(content) : content;
 }
 
-async function dalle3(prompt: string): Promise<string> {
+async function callDALLE(prompt: string): Promise<string> {
   const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
   const res = await fetch("https://api.openai.com/v1/images/generations", {
     method: "POST",
@@ -55,89 +60,64 @@ async function dalle3(prompt: string): Promise<string> {
     },
     body: JSON.stringify({
       model: "dall-e-3",
-      prompt,
+      prompt: prompt.slice(0, 4000),
       size: "1024x1024",
       quality: "standard",
       n: 1,
     }),
   });
-  if (!res.ok) throw new Error(`DALL-E 3 API error: ${res.status}`);
+  if (!res.ok) throw new Error(`DALL-E 3 error: ${res.status}`);
   const data = await res.json();
   return data.data[0].url as string;
 }
 
-// ── Pipeline ──────────────────────────────────────────────────────────────────
+// ── 메인 파이프라인 ───────────────────────────────────────────────────────────
 
 export async function generateStory(
-  inputs: StoryInputs,
-  onProgress: (step: number, label: string, percent: number) => void,
+  config: {
+    protagonist: string;
+    age: number;
+    theme: string;
+    style: string;
+    extraKorean: boolean;
+  },
+  onProgress: (step: number, label: string) => void,
 ): Promise<FairyTale> {
-  const { heroName, age, emotion, backgrounds, koreanMotifs, artStyle } = inputs;
+  const { protagonist, age, theme, style } = config;
+  const artStylePrefix = ART_STYLE_PREFIX[style] ?? DEFAULT_STYLE_PREFIX;
+  const characterPrefix = buildCharacterPrefix(artStylePrefix);
 
-  // ── 1단계: 세계관 설정 ────────────────────────────────────────────────────
-  onProgress(1, "세계관 구성 중...", 5);
+  // ── 1단계: 소재 분석 및 아이 성향 매핑 ────────────────────────────────────
+  onProgress(1, "소재 분석 및 아이 성향 매핑");
 
-  const worldSetting = await gpt4o([
-    {
-      role: "system",
-      content:
-        "당신은 한국 전통 정서와 동화적 세계관을 창조하는 전문 작가입니다. 한국어로 답하세요.",
-    },
-    {
-      role: "user",
-      content: `
-주인공 이름: ${heroName}, 나이: ${age}세
-주요 감정/테마: ${emotion}
-배경 요소: ${backgrounds.join(", ")}
-한국적 모티프: ${koreanMotifs.join(", ")}
+  const worldSetting = (await callGPT(
+    "한국 영유아 동화 전문 작가입니다",
+    `주인공: ${protagonist}, 나이: ${age}세, 테마: ${theme}, 화풍: ${style}\n` +
+      `이 동화의 세계관을 한국어로 3문장으로 설정해 주세요.`,
+    false,
+  )) as string;
 
-위 요소를 바탕으로 아이가 주인공인 동화의 세계관을 3~4문장으로 설정해주세요.
-이야기 전체에서 일관되게 사용될 배경, 분위기, 핵심 갈등을 포함해주세요.
-      `.trim(),
-    },
-  ]);
+  // ── 2단계: 기승전결 및 따스한 국문 운문 ────────────────────────────────────
+  onProgress(2, "기승전결 및 따스한 국문 운문");
 
-  // ── 2단계: 장면 JSON 생성 ────────────────────────────────────────────────
-  onProgress(2, "이야기 장면 생성 중...", 20);
-
-  const sceneRaw = await gpt4o(
-    [
-      {
-        role: "system",
-        content: "당신은 한국 아동 동화 작가입니다. 반드시 유효한 JSON만 반환하세요.",
-      },
-      {
-        role: "user",
-        content: `
-세계관:
-${worldSetting}
-
-주인공: ${heroName}(${age}세), 테마: ${emotion}
-
-총 5장면으로 구성된 동화를 다음 JSON 형식으로 생성하세요:
-{
-  "titleKo": "동화 제목",
-  "scenes": [
-    {
-      "pageNum": 1,
-      "narrativeKo": "2~3문장의 한국어 본문",
-      "emotion": "이 장면의 핵심 감정 한 단어",
-      "visualPrompt": "English visual description for illustration (2~3 sentences describing scene, characters, mood)"
-    }
-  ]
-}
-
-규칙:
-- narrativeKo는 ${age}세 아이가 이해하기 쉬운 한국어 문장
-- visualPrompt는 영어로, 인물의 외모와 배경을 구체적으로 묘사
-- 5장면이 기승전결-결말 구조를 가질 것
-        `.trim(),
-      },
-    ],
+  const storyData = (await callGPT(
+    "한국 영유아 동화 전문 작가입니다. 반드시 유효한 JSON만 반환하세요.",
+    `세계관:\n${worldSetting}\n\n` +
+      `주인공: ${protagonist}(${age}세), 테마: ${theme}\n\n` +
+      `${age}세 어휘 수준으로 5장면 동화를 아래 JSON 형식으로 생성하세요:\n` +
+      `{\n` +
+      `  "titleKo": "제목",\n` +
+      `  "scenes": [\n` +
+      `    {\n` +
+      `      "pageNum": 1,\n` +
+      `      "narrativeKo": "한국어 본문 2~3문장",\n` +
+      `      "emotion": "기쁨",\n` +
+      `      "visualPrompt": "English scene description"\n` +
+      `    }\n` +
+      `  ]\n` +
+      `}`,
     true,
-  );
-
-  const sceneData = JSON.parse(sceneRaw) as {
+  )) as {
     titleKo: string;
     scenes: {
       pageNum: number;
@@ -147,7 +127,7 @@ ${worldSetting}
     }[];
   };
 
-  let scenes: BookScene[] = sceneData.scenes.map((s) => ({
+  let scenes: BookScene[] = storyData.scenes.map((s) => ({
     pageNum: s.pageNum,
     narrativeKo: s.narrativeKo,
     narrativeEn: "",
@@ -158,158 +138,108 @@ ${worldSetting}
     visualPrompt: s.visualPrompt,
   }));
 
-  // ── 3단계: 다국어 번역 ───────────────────────────────────────────────────
-  onProgress(3, "다국어 번역 중...", 40);
+  // ── 3단계: 씬 분할 및 5대 글로벌 다국어 고운 번역 ─────────────────────────
+  onProgress(3, "씬 분할 및 5대 글로벌 다국어 고운 번역");
 
-  const translationRaw = await gpt4o(
-    [
-      {
-        role: "system",
-        content: "You are a professional translator. Return only valid JSON.",
-      },
-      {
-        role: "user",
-        content: `
-Translate the following Korean fairy tale title and scene narratives into English, Japanese (日本語), Simplified Chinese (简体中文), and Spanish.
-Return JSON in this exact format:
-{
-  "titleEn": "...",
-  "titleJp": "...",
-  "titleCn": "...",
-  "titleEs": "...",
-  "scenes": [
-    { "pageNum": 1, "narrativeEn": "...", "narrativeJp": "...", "narrativeCn": "...", "narrativeEs": "..." }
-  ]
-}
-
-Title: ${sceneData.titleKo}
-
-Scenes:
-${scenes.map((s) => `Page ${s.pageNum}: ${s.narrativeKo}`).join("\n")}
-        `.trim(),
-      },
-    ],
+  const translationData = (await callGPT(
+    "You are a professional literary translator. Return only valid JSON.",
+    `Translate the following Korean fairy tale title and scene narratives into ` +
+      `English, Japanese, Simplified Chinese, and Spanish.\n\n` +
+      `Title: ${storyData.titleKo}\n` +
+      `Scenes:\n${scenes.map((s) => `Page ${s.pageNum}: ${s.narrativeKo}`).join("\n")}\n\n` +
+      `Return JSON:\n` +
+      `{\n` +
+      `  "titleEn": "", "titleJp": "", "titleCn": "", "titleEs": "",\n` +
+      `  "narratives": [\n` +
+      `    { "En": "", "Jp": "", "Cn": "", "Es": "" }\n` +
+      `  ]\n` +
+      `}`,
     true,
-  );
-
-  const translationData = JSON.parse(translationRaw) as {
+  )) as {
     titleEn: string;
     titleJp: string;
     titleCn: string;
     titleEs: string;
-    scenes: {
-      pageNum: number;
-      narrativeEn: string;
-      narrativeJp: string;
-      narrativeCn: string;
-      narrativeEs: string;
-    }[];
+    narratives: { En: string; Jp: string; Cn: string; Es: string }[];
   };
 
-  scenes = scenes.map((scene) => {
-    const t = translationData.scenes.find((s) => s.pageNum === scene.pageNum);
+  scenes = scenes.map((scene, i) => {
+    const t = translationData.narratives[i];
     if (!t) return scene;
     return {
       ...scene,
-      narrativeEn: t.narrativeEn,
-      narrativeJp: t.narrativeJp,
-      narrativeCn: t.narrativeCn,
-      narrativeEs: t.narrativeEs,
+      narrativeEn: t.En,
+      narrativeJp: t.Jp,
+      narrativeCn: t.Cn,
+      narrativeEs: t.Es,
     };
   });
 
-  // ── 4단계: 캐릭터 시트 prefix ────────────────────────────────────────────
-  onProgress(4, "이미지 프롬프트 설정 중...", 45);
-
-  const styleDesc = ART_STYLE_MAP[artStyle] ?? artStyle;
-  const characterPrefix = `${styleDesc}, ${CHARACTER_SUFFIX}. `;
+  // ── 4단계: 어린이 화풍 일러스트 프롬프트 정밀 보정 ────────────────────────
+  onProgress(4, "어린이 화풍 일러스트 프롬프트 정밀 보정");
 
   scenes = scenes.map((scene) => ({
     ...scene,
-    visualPrompt: characterPrefix + scene.visualPrompt,
+    visualPrompt: `${characterPrefix}. ${scene.visualPrompt}`,
   }));
 
-  // ── 5단계: DALL-E 3 이미지 순차 생성 (병렬 금지) ─────────────────────────
+  // ── 5단계: 영유아 전용 동화책 삽화 렌더링 진행 ────────────────────────────
   for (let i = 0; i < scenes.length; i++) {
-    const percent = 45 + Math.round(((i + 1) / scenes.length) * 35);
-    onProgress(5, `이미지 생성 중... (${i + 1}/${scenes.length})`, percent);
-    const imageUrl = await dalle3(scenes[i].visualPrompt);
+    onProgress(5, "영유아 전용 동화책 삽화 렌더링 진행");
+    const imageUrl = await callDALLE(scenes[i].visualPrompt);
     scenes[i] = { ...scenes[i], imageUrl };
   }
 
-  // ── 6단계: 독후 활동 생성 ────────────────────────────────────────────────
-  onProgress(6, "독후 활동 생성 중...", 85);
+  // ── 6단계: 이해·감정·창의·어휘 4종 교육 놀이마당 설계 ─────────────────────
+  onProgress(6, "이해·감정·창의·어휘 4종 교육 놀이마당 설계");
 
-  const activitiesRaw = await gpt4o(
-    [
-      {
-        role: "system",
-        content: "당신은 아동 교육 전문가입니다. 반드시 유효한 JSON만 반환하세요.",
-      },
-      {
-        role: "user",
-        content: `
-다음 동화를 읽고 난 후 활동 자료를 JSON으로 생성해주세요.
-
-동화 제목: ${sceneData.titleKo}
-주인공: ${heroName}(${age}세)
-이야기 요약: ${scenes.map((s) => s.narrativeKo).join(" ")}
-
-다음 형식을 정확히 따르세요:
-{
-  "comprehension": {
-    "question": "이야기 내용을 확인하는 질문 (한국어)",
-    "correctAnswer": "정답"
-  },
-  "emotion": {
-    "question": "이 이야기를 읽고 어떤 감정이 들었나요? (한국어)",
-    "options": [
-      { "emotion": "기쁨",   "description": "이 감정을 선택하는 이유 한 문장" },
-      { "emotion": "슬픔",   "description": "..." },
-      { "emotion": "공감",   "description": "..." },
-      { "emotion": "두려움", "description": "..." },
-      { "emotion": "안도",   "description": "..." },
-      { "emotion": "궁금함", "description": "..." }
-    ]
-  },
-  "creative": {
-    "baseTitle": "이야기 이어쓰기 제목",
-    "baseSummary": "이어쓰기 배경 요약 (1~2문장)",
-    "contextPrompt": "아이에게 주는 이어쓰기 안내 문장"
-  },
-  "vocabulary": {
-    "cards": [
-      { "word": "단어1", "definition": "정의", "example": "예문" },
-      { "word": "단어2", "definition": "정의", "example": "예문" },
-      { "word": "단어3", "definition": "정의", "example": "예문" }
-    ],
-    "quiz": [
-      { "sentenceWithBlank": "______이(가) 빛나는 밤이었어요.", "blankWord": "별", "clue": "하늘에 반짝이는 것" },
-      { "sentenceWithBlank": "...", "blankWord": "...", "clue": "..." }
-    ]
-  }
-}
-        `.trim(),
-      },
-    ],
+  const activities = (await callGPT(
+    "당신은 아동 교육 전문가입니다. 반드시 유효한 JSON만 반환하세요.",
+    `동화 제목: ${storyData.titleKo}\n` +
+      `주인공: ${protagonist}(${age}세)\n` +
+      `요약: ${scenes.map((s) => s.narrativeKo).join(" ")}\n\n` +
+      `아래 형식으로 독후 활동을 생성하세요.\n` +
+      `emotion 값은 "기쁨","슬픔","공감","두려움","안도","궁금함" 중에서만 사용하세요.\n` +
+      `{\n` +
+      `  "comprehension": { "question": "", "correctAnswer": "" },\n` +
+      `  "emotion": {\n` +
+      `    "question": "",\n` +
+      `    "options": [\n` +
+      `      { "emotion": "기쁨",   "description": "" },\n` +
+      `      { "emotion": "슬픔",   "description": "" },\n` +
+      `      { "emotion": "공감",   "description": "" },\n` +
+      `      { "emotion": "두려움", "description": "" },\n` +
+      `      { "emotion": "안도",   "description": "" },\n` +
+      `      { "emotion": "궁금함", "description": "" }\n` +
+      `    ]\n` +
+      `  },\n` +
+      `  "creative": { "baseTitle": "", "baseSummary": "", "contextPrompt": "" },\n` +
+      `  "vocabulary": {\n` +
+      `    "cards": [\n` +
+      `      { "word": "", "definition": "", "example": "" },\n` +
+      `      { "word": "", "definition": "", "example": "" },\n` +
+      `      { "word": "", "definition": "", "example": "" }\n` +
+      `    ],\n` +
+      `    "quiz": [\n` +
+      `      { "sentenceWithBlank": "", "blankWord": "", "clue": "" },\n` +
+      `      { "sentenceWithBlank": "", "blankWord": "", "clue": "" }\n` +
+      `    ]\n` +
+      `  }\n` +
+      `}`,
     true,
-  );
-
-  const activities = JSON.parse(activitiesRaw) as FairyTale["activities"];
-
-  onProgress(6, "완료!", 100);
+  )) as FairyTale["activities"];
 
   return {
     id: crypto.randomUUID(),
-    titleKo: sceneData.titleKo,
+    titleKo: storyData.titleKo,
     titleEn: translationData.titleEn,
     titleJp: translationData.titleJp,
     titleCn: translationData.titleCn,
     titleEs: translationData.titleEs,
-    protagonist: heroName,
+    protagonist,
     age,
-    theme: emotion,
-    style: artStyle,
+    theme,
+    style,
     createdAt: new Date().toISOString(),
     isCustom: true,
     scenes,
