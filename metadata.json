@@ -1,0 +1,6 @@
+{
+  "name": "토리동화",
+  "description": "아이의 연령·관심사·상황에 맞춘 동화와 놀이마당을 AI로 생성하고, 독서 과정을 기록·관리할 수 있는 맞춤형 독서 경험 플랫폼",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

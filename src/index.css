@@ -1,0 +1,181 @@
+@import url("https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Noto+Sans+KR:wght@300;400;500;700;900&family=Fredoka:wght@300;400;500;600;700&display=swap");
+@import "tailwindcss";
+
+:root {
+  --theme-pink: #ff6b9d;
+  --theme-mint: #7ecec4;
+  --theme-yellow: #ffd93d;
+  --theme-lavender: #c9b1ff;
+  --theme-warmbg: #fff9f5;
+
+  --color-pink: #ff6b9d;
+  --color-mint: #7ecec4;
+  --color-yellow: #ffd93d;
+  --color-lavender: #c9b1ff;
+  --color-warmbg: #fff9f5;
+}
+
+body.theme-palette-0 {
+  --theme-pink: #ff6b9d;
+  --theme-mint: #7ecec4;
+  --theme-yellow: #ffd93d;
+  --theme-lavender: #c9b1ff;
+  --theme-warmbg: #fff9f5;
+
+  --color-pink: #ff6b9d;
+  --color-mint: #7ecec4;
+  --color-yellow: #ffd93d;
+  --color-lavender: #c9b1ff;
+  --color-warmbg: #fff9f5;
+}
+
+body.theme-palette-1 {
+  --theme-pink: #1f3c88;
+  --theme-mint: #f3cc67;
+  --theme-yellow: #ffd04d;
+  --theme-lavender: #72c88a;
+  --theme-warmbg: #fff9f0;
+
+  --color-pink: #1f3c88;
+  --color-mint: #f3cc67;
+  --color-yellow: #ffd04d;
+  --color-lavender: #72c88a;
+  --color-warmbg: #fff9f0;
+}
+
+body.theme-palette-2 {
+  --theme-pink: #3f67c6;
+  --theme-mint: #7ac7c4;
+  --theme-yellow: #f3cc67;
+  --theme-lavender: #ff9295;
+  --theme-warmbg: #fff9f3;
+
+  --color-pink: #3f67c6;
+  --color-mint: #7ac7c4;
+  --color-yellow: #f3cc67;
+  --color-lavender: #ff9295;
+  --color-warmbg: #fff9f3;
+}
+
+body.theme-palette-3 {
+  --theme-pink: #ff7b90;
+  --theme-mint: #5abad0;
+  --theme-yellow: #ffe494;
+  --theme-lavender: #68d391;
+  --theme-warmbg: #fffafd;
+
+  --color-pink: #ff7b90;
+  --color-mint: #5abad0;
+  --color-yellow: #ffe494;
+  --color-lavender: #68d391;
+  --color-warmbg: #fffafd;
+}
+
+@theme {
+  --font-sans:
+    "Fredoka", "Gaegu", "Noto Sans KR", ui-sans-serif, system-ui, sans-serif;
+  --font-cute: "Gaegu", cursive, sans-serif;
+  --color-pink: var(--theme-pink);
+  --color-mint: var(--theme-mint);
+  --color-yellow: var(--theme-yellow);
+  --color-lavender: var(--theme-lavender);
+  --color-warmbg: var(--theme-warmbg);
+}
+
+/* Artistic Flair Theme Utilities */
+.cute-font {
+  font-family: "Gaegu", cursive, sans-serif;
+}
+
+.tory-btn {
+  transition:
+    transform 0.1s ease,
+    box-shadow 0.1s ease;
+  box-shadow: 0 6px 0 rgba(0, 0, 0, 0.1);
+}
+
+.tory-btn:active {
+  transform: translateY(4px);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.1);
+}
+
+body {
+  background-color: var(--theme-warmbg);
+  color: #333;
+  transition: background-color 0.3s ease;
+}
+
+/* 3D Flashcard Flipping Utility Suite */
+.perspective {
+  perspective: 1000px;
+}
+
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+}
+
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+
+/* Custom childish scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--theme-pink);
+  border-radius: 99px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--theme-mint);
+}
+
+/* Multi-line truncations */
+.truncate-2-lines {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.truncate-3-lines {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.scale-101 {
+  transform: scale(1.01);
+}
+
+.scale-102 {
+  transform: scale(1.02);
+}
+
+.scale-103 {
+  transform: scale(1.03);
+}
+
+.active\:scale-97:active {
+  transform: scale(0.97);
+}
+
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+}
